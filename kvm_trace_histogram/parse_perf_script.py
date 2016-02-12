@@ -14,7 +14,11 @@ class EventParser(object):
 		
 	def save_data(self, file_name):
 		res = list()
-		res.append(self.parsed_data)
+		for data in self.parsed_data.items():
+			d = dict()
+			d["name"] = data[0]
+			d["val"] = data[1]
+			res.append(d)
 		json_file = "{0}".format(file_name)
 	        with open(json_file, "w") as f:
 	               	json.dump(res, f)
