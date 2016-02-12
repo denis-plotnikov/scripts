@@ -1,0 +1,16 @@
+parse_perf_script.py
+-------------------------------------------------------------------------------
+parses the output of "perf script", extracts specified events' data and save
+the data to separate files one per each event in json format
+
+
+make_perf_json.py
+-------------------------------------------------------------------------------
+parses events using "perf record -p <pid> -e <events> record <seconds>" command
+and saves the parsed data to file in json format
+
+
+show_histogram.py
+-------------------------------------------------------------------------------
+visualizes the event data provided  in form of hystogramm. As an input file it
+uses files produced by make_perf_json.py and parse_perf_script.py
