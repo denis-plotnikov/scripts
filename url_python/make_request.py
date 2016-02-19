@@ -32,7 +32,6 @@ def pcnt_get(percentile):
 			idx = i
 			break
 	return idx * PCNT_UPPER_BOUND / PCNT_RANGE
-	
 
 def plesk_visit_mainpage(ip_addr):
 	cj = CookieJar()
@@ -62,10 +61,10 @@ def plesk_check_content(content):
 		raise ContentError
 
 def timing(f, *args):
-        time1 = time.time()
-        ret = f(*args)
-        time2 = time.time()
-        elapsed_time = time2 - time1
+	time1 = time.time()
+	ret = f(*args)
+	time2 = time.time()
+	elapsed_time = time2 - time1
 	return (elapsed_time, ret)
 
 
@@ -115,11 +114,11 @@ if __name__ == "__main__":
 	args_num = len(sys.argv) 
 	run_time = 10
 	rate = 0.0
-	
+
 	ip_addr = sys.argv[1]
 	if args_num > 2:
 		run_time = int(sys.argv[2])
 	if args_num > 3:
 		rate = float(sys.argv[3])
-	
+
 	main(ip_addr, run_time, rate)
