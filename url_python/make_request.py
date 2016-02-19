@@ -34,19 +34,22 @@ def pcnt_get(percentile):
 	return idx * PCNT_UPPER_BOUND / PCNT_RANGE
 	
 
-def plesk_visit_mainpage():
+def plesk_visit_mainpage(ip_addr):
 	cj = CookieJar()
 	opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
 	formdata = {
 		"success_redirect_url":"",
 		"login_name":"root",
-		"passwd":"",
+		"passwd":"1q2w3e",
 		"locale_id":"default"
 	}
 	data_encoded = urllib.urlencode(formdata)
-	response = opener.open("https://10.30.18.198:8443/login_up.php3", data_encoded)
+	base_url = "https://{0}:8443/".format(ip_addr)
+	login_url = "{0}/login_up.php3".format(base_url)
+	response = opener.open(login_url, data_encoded)
 	content = response.read()
-	response = opener.open("https://10.30.18.198:8443/smb/", None)
+	main_page_url = "{0}/smb/".format(base_url)
+	response = opener.open(main_page_url, None)
 	content = response.read()
 	return content
 #	print(response)
@@ -66,7 +69,7 @@ def timing(f, *args):
 	return (elapsed_time, ret)
 
 
-def main(run_time, rate = 0.0):
+def main(ip_addr, run_time, rate = 0.0):
 	print("Run time: {0} sec".format(run_time))
 	requests = 0
 	errors = 0
@@ -81,7 +84,7 @@ def main(run_time, rate = 0.0):
 		stime = time.time()
 		try:
 			requests += 1
-			(t, content) = timing(plesk_visit_mainpage)
+			(t, content) = timing(plesk_visit_mainpage, ip_addr)
 			plesk_check_content(content)
 		except urllib2.URLError as e:
 			errors += 1
@@ -99,7 +102,7 @@ def main(run_time, rate = 0.0):
 		"Requests: {0}\n"
 		"Errors: {1}\n"
 		"Percentile {2}: {3} ms\n"
-		"Max response time {4} ms\n"
+		"Max response time: {4} ms\n"
 		.format(
 			requests,
 			errors,
@@ -113,9 +116,10 @@ if __name__ == "__main__":
 	run_time = 10
 	rate = 0.0
 	
-	if args_num > 1:
-		run_time = int(sys.argv[1])
+	ip_addr = sys.argv[1]
 	if args_num > 2:
-		rate = float(sys.argv[2])
+		run_time = int(sys.argv[2])
+	if args_num > 3:
+		rate = float(sys.argv[3])
 	
-	main(run_time, rate)
+	main(ip_addr, run_time, rate)
