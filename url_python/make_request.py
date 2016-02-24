@@ -40,7 +40,7 @@ def plesk_visit_mainpage(ip_addr):
 	formdata = {
 		"success_redirect_url":"",
 		"login_name":"root",
-		"passwd":"1q2w3e",
+		"passwd":"",
 		"locale_id":"default"
 	}
 	data_encoded = urllib.urlencode(formdata)
