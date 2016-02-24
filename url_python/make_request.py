@@ -6,6 +6,7 @@ import sys
 import math
 import re
 from cookielib import CookieJar
+from multiprocessing.pool import ThreadPool
 
 
 PCNT_UPPER_BOUND = 10000 # msec
@@ -67,8 +68,7 @@ def timing(f, *args):
 	elapsed_time = time2 - time1
 	return (elapsed_time, ret)
 
-
-def main(ip_addr, run_time, rate = 0.0):
+def plesk_load_routine(ip_addr, run_time, rate = 0.0):
 	print("Run time: {0} sec".format(run_time))
 	requests = 0
 	errors = 0
@@ -109,6 +109,40 @@ def main(ip_addr, run_time, rate = 0.0):
 			int(max_responce_time * 1000)
 		)
 	)
+
+def multiload_routine(host_list, load_distr_function, load_func, run_time, max_rate):
+	# get a list of rates to be applied to a corresponding host
+	host_num = len(host_list)
+	rates = load_distr_function(host_num, max_rate)
+
+	#list of tuples - list of parameters to be passed to load_func
+	params_list = list()
+	for i in range(host_num):
+		params_list.append((host_list[i], run_time, rates[i]))
+	print(params_list)
+	tp = ThreadPool(host_num)
+	tp.map(load_func, params_list)
+	tp.close()
+	tp.join()
+
+def uniform_max_load_distr(num, max_val):
+	return [max_val for i in range(num)]
+
+def dummy_load_routine(args):
+	my_num = args[0]
+	run_time = args[1]
+	my_rate = args[2]
+	print(
+		"[{0}]: I'll sleep for {1} seconds (rate = {2})\n".
+		format(my_num, run_time, my_rate))
+	time.sleep(run_time)
+	print("[{0}]I've done my sleeping!\n".format(my_num))
+
+def main(ip_addr, run_time, rate = 0.0):
+	#plesk_load_routine(ip_addr, run_time, rate = 0.0)
+	load_nums = [i for i in range(5)]
+	multiload_routine(load_nums, uniform_max_load_distr, dummy_load_routine, run_time, rate)
+
 
 if __name__ == "__main__":
 	args_num = len(sys.argv) 
