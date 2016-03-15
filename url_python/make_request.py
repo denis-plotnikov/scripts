@@ -7,11 +7,21 @@ import math
 import re
 from cookielib import CookieJar
 from multiprocessing.pool import ThreadPool
+from threading import Lock
 
 
 PCNT_UPPER_BOUND = 10000 # msec
 PCNT_RANGE = 100
 PERCENTILE = [0 for i in range(0, PCNT_RANGE + 1)]
+PCNT_LOCK = Lock()
+REQ_LOCK = Lock()
+ERR_LOCK = Lock()
+MAX_RESP_LOCK = Lock()
+RES_DICT = {
+		"requests": 0,
+		"errors": 0,
+		"max_response": 0.0
+}
 
 class ContentError(Exception):
 	pass
@@ -19,7 +29,9 @@ class ContentError(Exception):
 def pcnt_reg_val(val):
 	index = int(round(val * 1000 * PCNT_RANGE / PCNT_UPPER_BOUND))
 	index = min(index, PCNT_RANGE)
+	PCNT_LOCK.acquire()
 	PERCENTILE[index] += 1
+	PCNT_LOCK.release()
 
 def pcnt_get(percentile):
 	pcnt_sum = sum(PERCENTILE)
@@ -33,6 +45,37 @@ def pcnt_get(percentile):
 			idx = i
 			break
 	return idx * PCNT_UPPER_BOUND / PCNT_RANGE
+
+def reg_req():
+	REQ_LOCK.acquire()
+	RES_DICT["requests"] = RES_DICT["requests"] + 1
+	REQ_LOCK.release()
+
+def reg_error():
+	ERR_LOCK.acquire()
+	RES_DICT["errors"] = RES_DICT["errors"] + 1
+	ERR_LOCK.release()
+
+def reg_max_response(val):
+	MAX_RESP_LOCK.acquire()
+	RES_DICT["max_response"] = max(RES_DICT["max_response"], val)
+	MAX_RESP_LOCK.release()
+
+def default_page_load(ip_addr):
+	opener = urllib2.build_opener()
+	url = "http://{0}/test.html".format(ip_addr)
+	response = opener.open(url, None)
+	content = response.read()
+	return content
+
+def check_stub(content):
+	pass
+
+def default_load_routine(args):
+	host = args[0]
+	run_time = args[1]
+	rate = args[2]
+	load_routine_core(host, run_time, rate, default_page_load, check_stub)
 
 def plesk_visit_mainpage(ip_addr):
 	cj = CookieJar()
@@ -68,11 +111,7 @@ def timing(f, *args):
 	elapsed_time = time2 - time1
 	return (elapsed_time, ret)
 
-def plesk_load_routine(ip_addr, run_time, rate = 0.0):
-	print("Run time: {0} sec".format(run_time))
-	requests = 0
-	errors = 0
-	max_responce_time = 0
+def load_routine_core(ip_addr, run_time, rate, request_func, check_func):
 	if rate:
 		delay = 1.0 / rate
 	else:
@@ -80,35 +119,28 @@ def plesk_load_routine(ip_addr, run_time, rate = 0.0):
 
 	etime = time.time() + run_time
 	while time.time() < etime:
+		reg_req()
 		stime = time.time()
 		try:
-			requests += 1
-			(t, content) = timing(plesk_visit_mainpage, ip_addr)
-			plesk_check_content(content)
+			(t, content) = timing(request_func, ip_addr)
+			check_func(content)
 		except urllib2.URLError as e:
-			errors += 1
+			reg_error()
 		except ContentError:
-			errors += 1 
+			reg_error()
 		else:
 			pcnt_reg_val(t)
-			max_responce_time = max(t, max_responce_time)
+			reg_max_response(t)
 		dtime = time.time() - stime
 		wait_time = delay - dtime
 		if(wait_time > 0):
 			time.sleep(wait_time)
-	percentile = 90
-	print(
-		"Requests: {0}\n"
-		"Errors: {1}\n"
-		"Percentile {2}: {3} ms\n"
-		"Max response time: {4} ms\n"
-		.format(
-			requests,
-			errors,
-			percentile, pcnt_get(percentile),
-			int(max_responce_time * 1000)
-		)
-	)
+
+def plesk_load_routine(args):
+	host = args[0]
+	run_time = args[1]
+	rate = args[2]
+	load_routine_core(p_addr, run_time, rate, plesk_visit_mainpage, plesk_check_content)
 
 def multiload_routine(host_list, load_distr_function, load_func, run_time, max_rate):
 	# get a list of rates to be applied to a corresponding host
@@ -138,21 +170,42 @@ def dummy_load_routine(args):
 	time.sleep(run_time)
 	print("[{0}]I've done my sleeping!\n".format(my_num))
 
-def main(ip_addr, run_time, rate = 0.0):
+def main(host, thread_num, run_time, rate = 0.0):
 	#plesk_load_routine(ip_addr, run_time, rate = 0.0)
-	load_nums = [i for i in range(5)]
-	multiload_routine(load_nums, uniform_max_load_distr, dummy_load_routine, run_time, rate)
+	#load_nums = [i for i in range(5)]
+	#multiload_routine(load_nums, uniform_max_load_distr, dummy_load_routine, run_time, rate)
+#	hosts = ['10.30.118.130', '10.30.118.131']
+#	multiload_routine(hosts, uniform_max_load_distr, plesk_load_routine, run_time, rate)
 
+	hosts = [host for i in range(thread_num)]
+	multiload_routine(hosts, uniform_max_load_distr, default_load_routine, run_time, rate)
+
+	percentile = 90
+	print(
+		"Requests: {0}\n"
+		"Errors: {1}\n"
+		"Percentile {2}: {3} ms\n"
+		"Max response time: {4} ms\n"
+		.format(
+			RES_DICT["requests"],
+			RES_DICT["errors"],
+			percentile, pcnt_get(percentile),
+			int(RES_DICT["max_response"] * 1000)
+		)
+	)
 
 if __name__ == "__main__":
 	args_num = len(sys.argv) 
+	thread_num = 1
 	run_time = 10
 	rate = 0.0
 
-	ip_addr = sys.argv[1]
+	host = sys.argv[1]
 	if args_num > 2:
-		run_time = int(sys.argv[2])
+		thread_num = int(sys.argv[2])
 	if args_num > 3:
-		rate = float(sys.argv[3])
+		run_time = float(sys.argv[3])
+	if args_num > 4:
+		rate = float(sys.argv[4])
 
-	main(ip_addr, run_time, rate)
+	main(host, thread_num, run_time, rate)
