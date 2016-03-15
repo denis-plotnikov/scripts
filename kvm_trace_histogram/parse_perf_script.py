@@ -79,6 +79,7 @@ def get_search_events_or_die(event_names):
 	return event_parsers
 
 
+# event chain parsing
 INSIDE_CHAIN_STATE = 1
 OUTSIDE_CHAIN_STATE = 0
 
@@ -106,10 +107,17 @@ def process_chain_line(line):
 	elif event_name == "kvm_exit":
 		if CHAIN_PARSER_DATA["state"] == OUTSIDE_CHAIN_STATE:
 			 CHAIN_PARSER_DATA["state"] = INSIDE_CHAIN_STATE
-
 		reason_re = re.search("kvm:kvm_exit:\sreason\s(\S+)\s", line)
 		reason = reason_re.group(1)
 		CHAIN_PARSER_DATA["name"] = "{event_name}[{reason}]".format(event_name = event_name, reason = reason)
+	elif event_name == "kvm_userspace_exit":
+		reason_re = re.search("kvm:kvm_userspace_exit:\sreason\s(\S+)\s", line)
+		reason = reason_re.group(1)
+		CHAIN_PARSER_DATA["name"] = "{data}--{event_name}[{reason}]".format(data = CHAIN_PARSER_DATA["name"], event_name = event_name, reason = reason)
+	elif event_name == "kvm_mmio":
+                reason_re = re.search("kvm:kvm_mmio:\smmio\s(\S+)\s", line)
+                reason = reason_re.group(1)
+                CHAIN_PARSER_DATA["name"] = "{data}--{event_name}[{reason}]".format(data = CHAIN_PARSER_DATA["name"], event_name = event_name, reason = reason)
 	else:
 		CHAIN_PARSER_DATA["name"] = "{0}--{1}".format(CHAIN_PARSER_DATA["name"], event_name)
 
@@ -129,9 +137,18 @@ def parse_event_chain(file_name):
 					val += 1
 				event_chains[chain_name] = val
 
+	# conver to list of dictionaries
+	event_chains_list = list()
+	for name, val in event_chains.items():
+		d = dict()
+		d["name"] = name
+		d["val"] = val
+		event_chains_list.append(d)
+
+	event_chains_list = sorted(event_chains_list, key=lambda x: x["name"])
 	json_file = "{source_file}.chains.json".format(source_file = file_name)
 	with open(json_file, "w") as f:
-		json.dump(event_chains, f)
+		json.dump(event_chains_list, f)
 	print("Event chains data saved to: {0}".format(json_file))
 	print("Number of kvm_exit is [{0}]".format(sum([val for val in event_chains.values()])))
 
