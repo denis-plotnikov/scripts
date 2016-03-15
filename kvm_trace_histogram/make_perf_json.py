@@ -12,11 +12,19 @@ def main(pid, time_sec):
 	cmd = 'perf record -p {0} -e "kvm:*" sleep {1}'.format(pid, time_sec)
 	print(cmd)
 	subprocess.check_call(cmd, shell=True)
-	file_name = "/tmp/perf_pid{0}".format(pid)
-	txt_file = "{0}.txt".format(file_name)
+	file_base_name = "/tmp/perf_pid{0}".format(pid)
+
+	# save report file
+	txt_file = "{0}.txt".format(file_base_name)
 	report_cmd = 'perf report > {0}'.format(txt_file)
 	subprocess.check_call(report_cmd, shell=True)
+
+	# save report script - a report file with detailed event info
+	script_file = "{0}.script.txt".format(file_base_name)
+	script_cmd = 'perf script > {0}'.format(script_file)
+	subprocess.check_call(script_cmd, shell=True)
 	
+	# parse report file
 	with open(txt_file, "r") as f:
 		content = f.read()
 
@@ -36,11 +44,13 @@ def main(pid, time_sec):
 	#for point in res:
 	#	print("{0} -- {1}".format(point["name"], point["val"]))
 
-	json_file = "{0}.json".format(file_name)
+	json_file = "{0}.json".format(file_base_name)
 	with open(json_file, "w") as f:
 		json.dump(res, f)
 
-	print("Data saved to: {0}".format(json_file))
+	print("Parsed data saved to: {0}".format(json_file))
+	print("Report saved to: {0}".format(txt_file))
+	print("Detailed report saved to: {0}".format(script_file))
 
 	#with open("out.json", "r") as f:
 	#	d = json.load(f)
