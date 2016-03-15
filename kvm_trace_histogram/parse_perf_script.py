@@ -47,11 +47,23 @@ def kvm_entry_parser(line, parser_data):
 def kvm_exit_parser(line, parser_data):
 	return one_value_parser_template(line, parser_data, "kvm:kvm_exit:\sreason\s(\S+)\s")
 
+def kvm_mmio_parser(line, parser_data):
+	return one_value_parser_template(line, parser_data, "kvm:kvm_mmio:\smmio\s(\S+)\s")
+
+def kvm_userspace_exit_parser(line, parser_data):
+	return one_value_parser_template(line, parser_data, "kvm:kvm_userspace_exit:\sreason\s(\S+)\s")
+
+def kvm_emulate_insn_parser(line, parser_data):
+	return one_value_parser_template(line, parser_data, "kvm:kvm_emulate_insn:\s\d+:\w+:(.*)\s\(\w+\)")
+
 # avaliable events registration
 EVENT_LIST = dict()
 
 EVENT_LIST["kvm_entry"] = EventParser("kvm_entry", kvm_entry_parser)
 EVENT_LIST["kvm_exit"] = EventParser("kvm_exit", kvm_exit_parser)
+EVENT_LIST["kvm_mmio"] = EventParser("kvm_mmio", kvm_mmio_parser)
+EVENT_LIST["kvm_userspace_exit"] = EventParser("kvm_userspace_exit", kvm_userspace_exit_parser)
+EVENT_LIST["kvm_emulate_insn"] = EventParser("kvm_emulate_insn", kvm_emulate_insn_parser)
 
 EVENT_NAMES = [EVENT_LIST.keys()]
 
@@ -65,6 +77,64 @@ def get_search_events_or_die(event_names):
 		print("Unknown event: {0}".format(key_error.args[0]))
 		sys.exit(1)
 	return event_parsers
+
+
+INSIDE_CHAIN_STATE = 1
+OUTSIDE_CHAIN_STATE = 0
+
+CHAIN_PARSER_DATA = dict()
+CHAIN_PARSER_DATA["state"] = OUTSIDE_CHAIN_STATE
+CHAIN_PARSER_DATA["name"] = None
+
+def process_chain_line(line):
+	r = re.search(":\skvm:(\w+):", line)
+	if not r:
+		return None
+
+	event_name = r.group(1)
+
+	result = None
+	if event_name == "kvm_entry":
+		if CHAIN_PARSER_DATA["state"] == INSIDE_CHAIN_STATE:
+			CHAIN_PARSER_DATA["state"] = OUTSIDE_CHAIN_STATE
+			result = "{0}->{1}".format(CHAIN_PARSER_DATA["name"], "kvm_entry")
+			CHAIN_PARSER_DATA["name"] = None
+		else:
+			# it means we skip the rest of event records from the very beginning
+			# in order to find the first kvm_exit and star chain parsing
+			pass
+	elif event_name == "kvm_exit":
+		if CHAIN_PARSER_DATA["state"] == OUTSIDE_CHAIN_STATE:
+			 CHAIN_PARSER_DATA["state"] = INSIDE_CHAIN_STATE
+
+		reason_re = re.search("kvm:kvm_exit:\sreason\s(\S+)\s", line)
+		reason = reason_re.group(1)
+		CHAIN_PARSER_DATA["name"] = "{event_name}[{reason}]".format(event_name = event_name, reason = reason)
+	else:
+		CHAIN_PARSER_DATA["name"] = "{0}--{1}".format(CHAIN_PARSER_DATA["name"], event_name)
+
+	return result
+
+def parse_event_chain(file_name):
+	event_chains = dict()
+
+	with open(file_name, "r") as f:
+		for line in f:
+			chain_name = process_chain_line(line)
+			if chain_name:
+				val = event_chains.get(chain_name)
+				if not val:
+					val = 1
+				else:
+					val += 1
+				event_chains[chain_name] = val
+
+	json_file = "{source_file}.chains.json".format(source_file = file_name)
+	with open(json_file, "w") as f:
+		json.dump(event_chains, f)
+	print("Event chains data saved to: {0}".format(json_file))
+	print("Number of kvm_exit is [{0}]".format(sum([val for val in event_chains.values()])))
+
 
 def main(file_name, event_names):
 	event_parsers = get_search_events_or_die(event_names)
@@ -85,7 +155,10 @@ def main(file_name, event_names):
 
 if __name__=="__main__":
 	if len(sys.argv) != 3:
-		print('Usage: {0} file_name "event_name_0, ..., event_name_N"\nList of events avaliable: {1}'.
+		print(
+			'Usage: {0} file_name "event_name_0, ..., event_name_N"\nList of events avaliable: {1}\n'
+			'	file_name: a file output of "perf script" command saved \n'
+			'	event_name: an event name to be parsed'.
 			format(sys.argv[0], EVENT_NAMES))
 		sys.exit(1)
 
