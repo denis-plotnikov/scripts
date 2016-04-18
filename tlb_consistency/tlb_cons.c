@@ -97,7 +97,7 @@ void drop_flag(int thread_num)
 }
 
 // thread functions
-	
+
 struct test_info {
 	unsigned long iters;
 	struct map_info *mapping;
@@ -134,7 +134,6 @@ static void print_flags()
 	for (int i = 0; i < num_threads; i++)
 		printf("%d", (int) start_flags[CACHE_LINE_SIZE * i]);
 	printf("\n");
-		
 }
 
 static void *director(void *thr_info)
@@ -154,7 +153,7 @@ static void *director(void *thr_info)
 			if (is_flag_set(i))
 				counter++;
 		}
-		// if so, exchange pages and set theads' start flags 
+		// if so, exchange pages and set theads' start flags
 		if (counter == 0) {
 			// loop exit condition
 			// wait until workers' finish the last iteration check
@@ -189,7 +188,7 @@ int main()
 	if (start_flags == NULL)
 			raise_error("Can't allocate memory for start_flags", EXIT_FAILURE);
 
-	// create and initialize pages that is goinig to be used for testing 
+	// create and initialize pages that is goinig to be used for testing
 	struct map_info m_info[NPAGE];
 	for (int i = 0; i < NPAGE; i++) {
 		m_info[i].val = (char)i;
@@ -212,7 +211,7 @@ int main()
 	struct director_info d_info;
 	d_info.num_threads = num_threads;
 	d_info.t_info = &t_info;
-	
+
 	pthread_attr_t attr;
 	pthread_attr_t d_attr;
 	pthread_t w_ids[num_threads];
