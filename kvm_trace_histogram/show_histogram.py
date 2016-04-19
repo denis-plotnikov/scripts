@@ -10,7 +10,7 @@ from matplotlib.lines import Line2D
 
 def get_points(points):
 	names = [point["name"] for point in points]
-	vals = [int(point["val"]) for point in points]
+	vals = [float(point["val"]) for point in points]
 	r = dict()
 	r["names"] = names
 	r["vals"] = vals

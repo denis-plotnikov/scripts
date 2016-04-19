@@ -12,16 +12,18 @@ class EventParser(object):
 	def process_line(self, line):
 		self.parser_func(line, self.parsed_data)
 		
-	def save_data(self, file_name):
+	def save_data(self, file_name, time):
 		res = list()
 		for data in self.parsed_data.items():
 			d = dict()
 			d["name"] = data[0]
-			d["val"] = data[1]
+			r = float(data[1]) / time
+			r = round(r, 3)
+			d["val"] = "{0:g}".format(r)
 			res.append(d)
 		json_file = "{0}".format(file_name)
-	        with open(json_file, "w") as f:
-	               	json.dump(res, f)
+		with open(json_file, "w") as f:
+			json.dump(res, f)
 	        print("{0} data saved to: {1}".format(self.name, json_file))
 
 
@@ -56,6 +58,9 @@ def kvm_userspace_exit_parser(line, parser_data):
 def kvm_emulate_insn_parser(line, parser_data):
 	return one_value_parser_template(line, parser_data, "kvm:kvm_emulate_insn:\s\d+:\w+:(.*)\s\(\w+\)")
 
+def kvm_cpuid_parser(line, parser_data):
+	return one_value_parser_template(line, parser_data, "kvm:kvm_cpuid:\sfunc\s(\d+)\s")
+
 # avaliable events registration
 EVENT_LIST = dict()
 
@@ -64,8 +69,9 @@ EVENT_LIST["kvm_exit"] = EventParser("kvm_exit", kvm_exit_parser)
 EVENT_LIST["kvm_mmio"] = EventParser("kvm_mmio", kvm_mmio_parser)
 EVENT_LIST["kvm_userspace_exit"] = EventParser("kvm_userspace_exit", kvm_userspace_exit_parser)
 EVENT_LIST["kvm_emulate_insn"] = EventParser("kvm_emulate_insn", kvm_emulate_insn_parser)
+EVENT_LIST["kvm_cpuid"] = EventParser("kvm_cpuid", kvm_cpuid_parser)
 
-EVENT_NAMES = [EVENT_LIST.keys()]
+EVENT_NAMES = sorted(EVENT_LIST.keys())
 
 # helper functions
 def get_search_events_or_die(event_names):
@@ -115,9 +121,15 @@ def process_chain_line(line):
 		reason = reason_re.group(1)
 		CHAIN_PARSER_DATA["name"] = "{data}--{event_name}[{reason}]".format(data = CHAIN_PARSER_DATA["name"], event_name = event_name, reason = reason)
 	elif event_name == "kvm_mmio":
-                reason_re = re.search("kvm:kvm_mmio:\smmio\s(\S+)\s", line)
-                reason = reason_re.group(1)
-                CHAIN_PARSER_DATA["name"] = "{data}--{event_name}[{reason}]".format(data = CHAIN_PARSER_DATA["name"], event_name = event_name, reason = reason)
+		reason_re = re.search("kvm:kvm_mmio:\smmio\s(\S+)\s", line)
+		reason = reason_re.group(1)
+		CHAIN_PARSER_DATA["name"] = "{data}--{event_name}[{reason}]".format(data = CHAIN_PARSER_DATA["name"], event_name = event_name, reason = reason)
+	elif event_name == "vcpu_match_mmio":
+		reason_re = re.search("kvm:vcpu_match_mmio:\s\w+\s\w+\s\w+\s\w+\s(.+$)", line)
+		if reason_re:
+			reason = reason_re.group(1)
+			reason = reason.strip()
+			CHAIN_PARSER_DATA["name"] = "{data}--{event_name}[{reason}]".format(data = CHAIN_PARSER_DATA["name"], event_name = event_name, reason = reason)
 	else:
 		CHAIN_PARSER_DATA["name"] = "{0}--{1}".format(CHAIN_PARSER_DATA["name"], event_name)
 
@@ -145,7 +157,7 @@ def parse_event_chain(file_name):
 		d["val"] = val
 		event_chains_list.append(d)
 
-	event_chains_list = sorted(event_chains_list, key=lambda x: x["name"])
+	event_chains_list = sorted(event_chains_list, key=lambda x: x["val"], reverse=True)
 	json_file = "{source_file}.chains.json".format(source_file = file_name)
 	with open(json_file, "w") as f:
 		json.dump(event_chains_list, f)
@@ -153,7 +165,7 @@ def parse_event_chain(file_name):
 	print("Number of kvm_exit is [{0}]".format(sum([val for val in event_chains.values()])))
 
 
-def main(file_name, event_names):
+def main(file_name, event_names, time):
 	event_parsers = get_search_events_or_die(event_names)
 
 	# open file and pass a line to each parser available
@@ -163,23 +175,30 @@ def main(file_name, event_names):
 			for handler in line_handlers:
 				if handler(line):
 					break
-	
+
 	# save parsers' data to separate files
 	for event_parser in event_parsers.values():
 		f = "{0}-{1}.json".format(file_name, event_parser.name)
-		event_parser.save_data(f)
+		event_parser.save_data(f, time)
 
 
 if __name__=="__main__":
-	if len(sys.argv) != 3:
+	argn = len(sys.argv)
+	if argn < 3:
 		print(
-			'Usage: {0} file_name "event_name_0, ..., event_name_N"\nList of events avaliable: {1}\n'
+			'Usage: {0} file_name "event_name_0, ..., event_name_N" [time]\nList of events avaliable: {1}\n'
 			'	file_name: a file output of "perf script" command saved \n'
-			'	event_name: an event name to be parsed'.
+			'	event_name: an event name to be parsed'
+			'	time: file_name duration of measurement in sec, 1 sec if not specified'.
 			format(sys.argv[0], EVENT_NAMES))
 		sys.exit(1)
 
 	events = sys.argv[2].split(',')
 	event_names = map(lambda x: x.strip(), events)
 	event_names = [event for event in event_names if event]
-	main(sys.argv[1], event_names)
+
+	if argn >=4:
+		time = int(sys.argv[3])
+	else:
+		time = 1
+	main(sys.argv[1], event_names, time)
