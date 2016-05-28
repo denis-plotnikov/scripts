@@ -1,0 +1,5 @@
+# compile with MinGW 
+# to link dynamicaly 
+gcc -o tlb_consist tlb_consist.c -std=gnu99 -lpthread -DHAVE_STRUCT_TIMESPEC
+# to link staticaly (don't need to install support of pthread on windows)
+gcc -o tlb_consist tlb_consist.c -std=gnu99 -static-libgcc -DHAVE_STRUCT_TIMESPEC -Wl,-Bstatic -pthread -Wl,-Bdynamic
